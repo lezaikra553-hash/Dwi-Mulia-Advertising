@@ -59,16 +59,63 @@ function applyAllChildren(){document.querySelectorAll('iframe').forEach(applyToC
 function portalLogin(){const v=document.getElementById('portalPass').value;if(v===PORTAL_PASS){sessionStorage.setItem('PORTAL_OK','1');document.getElementById('portalLogin').style.display='none';loadFrame('framePenawaran',APP_PENAWARAN_B64);applyAllChildren();}else document.getElementById('portalErr').style.display='block';}
 function portalLogout(){sessionStorage.removeItem('PORTAL_OK');sessionStorage.removeItem('PORTAL_GOOGLE_TOKEN');sessionStorage.removeItem('PORTAL_GOOGLE_EMAIL');sessionStorage.removeItem('ok');location.reload();}
 function updatePortalGoogleUi(){const ok=!!window.PORTAL_ACCESS_TOKEN;document.getElementById('portalDot').classList.toggle('on',ok);document.getElementById('portalGoogleStatus').textContent=ok?'Login: '+(window.PORTAL_GOOGLE_EMAIL||'Google aktif'):'Google belum login';applyAllChildren();}
-function loginGooglePortal(){
-  if(!window.google||!google.accounts)return alert('Google belum siap. Pastikan internet aktif dan buka dari Vercel/domain yang terdaftar OAuth.');
-  const tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,callback:async(resp)=>{
-    if(resp.error)return alert('Login Google gagal: '+resp.error);
-    window.PORTAL_ACCESS_TOKEN=resp.access_token; sessionStorage.setItem('PORTAL_GOOGLE_TOKEN',resp.access_token);
-    try{const u=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+resp.access_token}}).then(r=>r.json());window.PORTAL_GOOGLE_EMAIL=(u.email||'').toLowerCase();}catch(e){window.PORTAL_GOOGLE_EMAIL='';}
-    if(window.PORTAL_GOOGLE_EMAIL && window.PORTAL_GOOGLE_EMAIL!==ALLOWED_EMAIL.toLowerCase()){window.PORTAL_ACCESS_TOKEN='';sessionStorage.removeItem('PORTAL_GOOGLE_TOKEN');sessionStorage.removeItem('PORTAL_GOOGLE_EMAIL');updatePortalGoogleUi();return alert('Akun Google tidak diizinkan. Gunakan '+ALLOWED_EMAIL);}
-    sessionStorage.setItem('PORTAL_GOOGLE_EMAIL',window.PORTAL_GOOGLE_EMAIL||ALLOWED_EMAIL); updatePortalGoogleUi(); alert('Login Google portal berhasil: '+(window.PORTAL_GOOGLE_EMAIL||ALLOWED_EMAIL)); setTimeout(portalSmartSyncAfterLogin,500);
-  }});
-  tokenClient.requestAccessToken({prompt:'consent'});
+function portalClearGoogleToken(){
+  window.PORTAL_ACCESS_TOKEN='';
+  window.PORTAL_GOOGLE_EMAIL='';
+  sessionStorage.removeItem('PORTAL_GOOGLE_TOKEN');
+  sessionStorage.removeItem('PORTAL_GOOGLE_EMAIL');
+  updatePortalGoogleUi();
+}
+function loginGooglePortal(options={}){
+  return new Promise((resolve,reject)=>{
+    if(!window.google||!google.accounts){
+      const msg='Google belum siap. Pastikan internet aktif dan buka dari domain Vercel yang sudah terdaftar OAuth: https://mulia-group.vercel.app';
+      alert(msg); reject(new Error(msg)); return;
+    }
+    const silent=options.silent===true;
+    const tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,callback:async(resp)=>{
+      if(resp.error){
+        portalClearGoogleToken();
+        const msg='Login Google gagal: '+resp.error;
+        if(!silent) alert(msg);
+        reject(new Error(msg)); return;
+      }
+      if(!resp.access_token){
+        portalClearGoogleToken();
+        const msg='Login Google gagal: token kosong. Klik Login Google ulang.';
+        if(!silent) alert(msg);
+        reject(new Error(msg)); return;
+      }
+      window.PORTAL_ACCESS_TOKEN=resp.access_token;
+      sessionStorage.setItem('PORTAL_GOOGLE_TOKEN',resp.access_token);
+      try{
+        const u=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+resp.access_token}}).then(r=>r.json());
+        window.PORTAL_GOOGLE_EMAIL=(u.email||'').toLowerCase();
+      }catch(e){window.PORTAL_GOOGLE_EMAIL='';}
+      if(window.PORTAL_GOOGLE_EMAIL && window.PORTAL_GOOGLE_EMAIL!==ALLOWED_EMAIL.toLowerCase()){
+        portalClearGoogleToken();
+        const msg='Akun Google tidak diizinkan. Gunakan '+ALLOWED_EMAIL;
+        if(!silent) alert(msg);
+        reject(new Error(msg)); return;
+      }
+      sessionStorage.setItem('PORTAL_GOOGLE_EMAIL',window.PORTAL_GOOGLE_EMAIL||ALLOWED_EMAIL);
+      updatePortalGoogleUi();
+      if(!silent) alert('Login Google portal berhasil: '+(window.PORTAL_GOOGLE_EMAIL||ALLOWED_EMAIL));
+      setTimeout(portalSmartSyncAfterLogin,500);
+      resolve(window.PORTAL_ACCESS_TOKEN);
+    }});
+    tokenClient.requestAccessToken({prompt: options.prompt || 'consent'});
+  });
+}
+async function portalEnsureGoogleToken(){
+  if(window.PORTAL_ACCESS_TOKEN){
+    try{
+      const r=await fetch('https://www.googleapis.com/oauth2/v1/tokeninfo?access_token='+encodeURIComponent(window.PORTAL_ACCESS_TOKEN));
+      if(r.ok) return window.PORTAL_ACCESS_TOKEN;
+    }catch(e){}
+    portalClearGoogleToken();
+  }
+  return await loginGooglePortal({prompt:'consent'});
 }
 function openApp(app){const isPen=app==='penawaran';document.getElementById('framePenawaran').classList.toggle('active',isPen);document.getElementById('frameKas').classList.toggle('active',!isPen);document.getElementById('btnPenawaran').classList.toggle('active',isPen);document.getElementById('btnKas').classList.toggle('active',!isPen);if(isPen)loadFrame('framePenawaran',APP_PENAWARAN_B64);else loadFrame('frameKas',APP_KAS_B64);sessionStorage.setItem('BERKAH_MULIA_PORTAL_LAST_APP',app);applyAllChildren();}
 if(sessionStorage.getItem('PORTAL_OK')==='1'){document.getElementById('portalLogin').style.display='none';loadFrame('framePenawaran',APP_PENAWARAN_B64);const last=sessionStorage.getItem('BERKAH_MULIA_PORTAL_LAST_APP');if(last==='kas')openApp('kas');}
@@ -144,6 +191,9 @@ function portalDriveHeaders(extra={}){
   if(!window.PORTAL_ACCESS_TOKEN) throw new Error('Silakan Login Google dulu.');
   return Object.assign({Authorization:'Bearer '+window.PORTAL_ACCESS_TOKEN}, extra);
 }
+function portalIsAuthError(message){
+  return /invalid authentication|auth|unauthorized|401|access token|credential/i.test(String(message||''));
+}
 async function portalFindSyncFile(){
   const q=encodeURIComponent(`name='${PORTAL_SYNC_FILE}' and trashed=false`);
   const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name,modifiedTime,size)&pageSize=10`,{headers:portalDriveHeaders()});
@@ -204,7 +254,10 @@ async function portalBackupNow(show=true){
     portalSetStatus('Sinkron Drive berhasil: '+new Date().toLocaleTimeString('id-ID'), true);
     if(show) alert('Sinkron Google Drive berhasil. Data siap dibuka dari HP/laptop lain.');
   }catch(e){
-    console.error(e); if(show) alert('Sinkron gagal: '+(e.message||e)); else portalSetStatus('Sinkron gagal: '+(e.message||e), false);
+    console.error(e);
+    if(portalIsAuthError(e.message||e)){portalClearGoogleToken();}
+    const msg = portalIsAuthError(e.message||e) ? 'Sesi Google habis / token tidak valid. Klik Login Google ulang, lalu Sinkronkan lagi.' : ('Sinkron gagal: '+(e.message||e));
+    if(show) alert(msg); else portalSetStatus(msg, false);
   }finally{portalSyncBusy=false;}
 }
 async function portalRestoreFromDrive(force=false){
@@ -221,7 +274,11 @@ async function portalRestoreFromDrive(force=false){
     localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT', payload.portalSyncAt || file.modifiedTime || new Date().toISOString());
     portalSetStatus('Restore Drive berhasil: '+new Date().toLocaleTimeString('id-ID'), true);
     alert('Restore dari Google Drive berhasil. Data lama sekarang sudah masuk ke perangkat ini.');
-  }catch(e){console.error(e); alert('Restore gagal: '+(e.message||e));}
+  }catch(e){
+    console.error(e);
+    if(portalIsAuthError(e.message||e)){portalClearGoogleToken(); alert('Sesi Google habis / token tidak valid. Klik Login Google ulang, lalu Restore Drive lagi.');}
+    else alert('Restore gagal: '+(e.message||e));
+  }
 }
 async function portalSmartSyncAfterLogin(){
   try{
@@ -251,12 +308,12 @@ async function portalSmartSyncAfterLogin(){
   }catch(e){console.warn('Smart sync gagal',e); portalSetStatus('Google aktif - sync perlu manual', true);}
 }
 async function portalManualSync(){
-  if(!window.PORTAL_ACCESS_TOKEN) return loginGooglePortal();
-  await portalBackupNow(true);
+  try{await portalEnsureGoogleToken(); await portalBackupNow(true);}
+  catch(e){console.error(e); alert('Sinkron gagal karena Google belum login/izin OAuth belum aktif. Klik Login Google ulang lalu coba Sinkronkan.');}
 }
 async function portalManualRestore(){
-  if(!window.PORTAL_ACCESS_TOKEN) return loginGooglePortal();
-  await portalRestoreFromDrive(true);
+  try{await portalEnsureGoogleToken(); await portalRestoreFromDrive(true);}
+  catch(e){console.error(e); alert('Restore gagal karena Google belum login/izin OAuth belum aktif. Klik Login Google ulang lalu coba Restore Drive.');}
 }
 async function portalWatchLocalChanges(){
   try{
