@@ -490,5 +490,71 @@ function repaint(){syncInvoiceProjects();const e=ent||{projects:[],purchasing:[]
 })();
 </script>
 
+<script id="mulia-unified-sync-100">
+(function(){
+'use strict';
+const MASTER='MULIA_GROUP_UNIFIED_MASTER_V3';
+const STAGES=['Penawaran','PO/SPK','Produksi','QC','Pengiriman','Pemasangan','Selesai'];
+const n=v=>Number(String(v??0).replace(/[^0-9.-]/g,''))||0;
+const j=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+const txt=(...v)=>v.filter(Boolean).join(' ').trim();
+const docTotal=x=>{const items=Array.isArray(x?.items)?x.items:[];let sub=items.reduce((a,i)=>a+n(i.qty)*n(i.price),0);let p=n(x?.ppnPct),m=x?.ppnMode||'none';return m==='exclusive'?sub+Math.round(sub*p/100):sub};
+function normalizeStatus(v, fallback='Penawaran'){
+ v=String(v||'').toLowerCase();
+ if(/selesai|lunas|closed/.test(v))return 'Selesai';
+ if(/pasang|instal/.test(v))return 'Pemasangan';
+ if(/kirim|delivery/.test(v))return 'Pengiriman';
+ if(/qc|quality/.test(v))return 'QC';
+ if(/produksi|workshop|proses|mockup/.test(v))return 'Produksi';
+ if(/po|spk|deal|approved/.test(v))return 'PO/SPK';
+ return fallback;
+}
+function build(){
+ const sales=j('MULIA_GROUP_STABLE_DB_V1')||{};
+ const kas=j('BERKAH_MULIA_KAS_BESAR_ACTIVE_DB')||j('kasBesarBM_V8_ENTERPRISE')||{};
+ const hr=j('berkah_absensi_gaji_kalender_v4')||j('berkah_absensi_gaji_kalender_v3')||{};
+ ent=ent||{projects:[],purchasing:[],inventory:[],tasks:[],audit:[]};
+ const quotes=Array.isArray(sales.quotes)?sales.quotes:[];
+ const invoices=Array.isArray(sales.invoices)?sales.invoices:[];
+ const manual=new Map((ent.projects||[]).map(p=>[String(p.autoKey||p.autoInvoiceKey||p.name).toLowerCase(),p]));
+ const projects=[];
+ // Penawaran yang belum menjadi invoice tetap masuk pipeline Penawaran.
+ quotes.forEach((q,i)=>{
+   const key=String(q.no||q.number||('Q-'+i)).toLowerCase();
+   const value=docTotal(q);
+   const existing=manual.get(key);
+   projects.push(Object.assign({autoKey:key,name:txt(q.subject,q.perihal)||('Penawaran '+(q.no||i+1)),customer:q.customer||q.customerName||'',entity:q.entity||'Mulia Group',status:'Penawaran',value},existing||{}));
+ });
+ // Invoice menjadi satu project; status mengikuti status tersimpan/teks dokumen.
+ invoices.forEach((inv,i)=>{
+   const no=String(inv.no||inv.number||('INV-'+i));
+   const key=no.toLowerCase();
+   const value=docTotal(inv);
+   const customer=inv.customer||inv.customerName||'';
+   const all=txt(customer,inv.subject,inv.perihal,inv.note,inv.description);
+   let status=normalizeStatus(txt(inv.projectStatus,inv.productionStatus,inv.status),'PO/SPK');
+   if(/hermina/i.test(all)||Math.abs(value-160350000)<2) status='Produksi';
+   const existing=manual.get(key)||[...manual.values()].find(p=>String(p.autoInvoiceKey||'').toLowerCase()===key);
+   projects.push(Object.assign({autoKey:key,autoInvoiceKey:no,name:/hermina/i.test(all)||Math.abs(value-160350000)<2?'Mockup Hermina Tower':(inv.projectName||inv.subject||inv.perihal||('Project '+no)),customer,entity:inv.entity||'CV. Berkah Mulia Adv',status,value,invoiceNo:no},existing||{}, {value:value||n(existing?.value), status: existing?.status||status}));
+ });
+ // Pertahankan project manual yang tidak berasal dari quote/invoice.
+ const keys=new Set(projects.map(p=>String(p.autoKey||p.autoInvoiceKey||'').toLowerCase()));
+ (ent.projects||[]).forEach(p=>{const k=String(p.autoKey||p.autoInvoiceKey||'').toLowerCase();if(!k||!keys.has(k))projects.push(p)});
+ ent.projects=projects;
+ localStorage.setItem(ENT_KEY,JSON.stringify(ent));
+ const master={version:3,updatedAt:new Date().toISOString(),sales,kas,hr,enterprise:ent};
+ localStorage.setItem(MASTER,JSON.stringify(master));
+ localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',master.updatedAt);
+ return master;
+}
+function refresh(){build(); try{repaint()}catch(e){try{renderEnterprise()}catch(_){}} try{if(document.getElementById('pageOperasional')?.classList.contains('active'))renderOps()}catch(e){} }
+window.MuliaUnifiedSync={refresh,masterKey:MASTER,setProjectStatus:function(invoiceNo,status){const k=String(invoiceNo||'').toLowerCase();const p=(ent.projects||[]).find(x=>String(x.autoInvoiceKey||x.invoiceNo||x.autoKey||'').toLowerCase()===k);if(p){p.status=normalizeStatus(status,p.status);saveEnt('Status project '+invoiceNo+' → '+p.status);refresh();return true}return false}};
+['framePenawaran','frameKas','frameAbsensi'].forEach(id=>document.getElementById(id)?.addEventListener('load',()=>setTimeout(refresh,500)));
+window.addEventListener('storage',refresh);
+setInterval(refresh,1200);
+setTimeout(refresh,250);
+})();
+</script>
+
 </body>
 </html>
