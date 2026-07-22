@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Portal Mulia Group V2.0.4 Session Refresh FIX</title>
+<title>PT. Dwi Mulia Advertising</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box}body{margin:0;font-family:Arial,system-ui,sans-serif;background:#0f172a;color:#0f172a}
@@ -31,8 +31,8 @@
 <body>
 <div id="portalLogin">
   <div class="loginBox">
-    <h2>PORTAL MULIA GROUP</h2>
-    <p>1 password untuk membuka semua aplikasi. Session tetap aktif saat refresh, dan hilang saat tab ditutup atau logout.</p>
+    <h2>PT. DWI MULIA ADVERTISING</h2>
+    <p>Aplikasi administrasi PT. Dwi Mulia Advertising. Session tetap aktif saat refresh, dan hilang saat tab ditutup atau logout.</p>
     <input id="portalPass" type="password" placeholder="Password aplikasi" onkeydown="if(event.key==='Enter') portalLogin()">
     <button onclick="portalLogin()">🔐 Masuk Portal</button>
     <div id="portalErr" class="err">Password salah</div>
@@ -40,10 +40,8 @@
   </div>
 </div>
 <div class="portalTop">
-  <div class="brand">PORTAL MULIA GROUP <span class="portalVersion">V2.0.4 REFRESH FIX</span><small>Command Center • Finance • Project • HR • Google Drive</small></div>
-  <button id="btnDashboard" class="tabBtn active" onclick="openApp('dashboard')">🏠 Dashboard</button>
-  <button id="btnOperasional" class="tabBtn" onclick="openApp('operasional')">🏗 Operasional</button>
-  <button id="btnPenawaran" class="tabBtn" onclick="openApp('penawaran')">📄 Penawaran & Invoice</button>
+  <div class="brand">PT. DWI MULIA ADVERTISING <span class="portalVersion">ADMIN APPLICATION</span><small>Penawaran • Invoice • Kas Besar • Absensi & Payroll</small></div>
+  <button id="btnPenawaran" class="tabBtn active" onclick="openApp('penawaran')">📄 Penawaran & Invoice</button>
   <button id="btnKas" class="tabBtn" onclick="openApp('kas')">💰 Kas Besar</button>
   <button id="btnAbsensi" class="tabBtn" onclick="openApp('absensi')">👷 Absensi & Slip Gaji</button>
   <button class="topBtn green" onclick="loginGooglePortal()">🔐 Login Google</button>
@@ -52,11 +50,9 @@
   <button class="topBtn red" onclick="portalLogout()">Keluar</button>
   <span class="driveMini"><span id="portalDot" class="dot"></span><span id="portalGoogleStatus">Google belum login</span></span>
 </div>
-<div id="portalLoader"><div class="loaderBox"><span class="loaderSpin"></span>Memuat modul Mulia Group…</div></div>
+<div id="portalLoader"><div class="loaderBox"><span class="loaderSpin"></span>Memuat aplikasi Dwi Mulia…</div></div>
 <div class="frameWrap">
-  <section id="pageDashboard" class="commandPage active"><div class="hero"><div><h1>Enterprise Command Center</h1><p>Pusat kendali CV. Berkah Mulia Adv • PT. Dwi Mulia Advertising • PT. Azkia Mulia Perada</p></div><div class="heroRight" id="heroClock">-<small>Status sistem: siap</small></div></div><div class="enterpriseGrid" id="metrics"></div><div class="enterpriseTwo"><div class="enterpriseCard"><h3>Modul Utama</h3><div class="moduleGrid"><button class="moduleTile" onclick="openApp('penawaran')"><b>📄 Penawaran & Invoice</b><span>Customer, quotation, invoice, piutang</span></button><button class="moduleTile" onclick="openApp('kas')"><b>💰 Kas & Keuangan</b><span>Kas besar, laporan dan investor</span></button><button class="moduleTile" onclick="openApp('absensi')"><b>👷 HR & Payroll</b><span>Absensi, lembur, gaji, slip</span></button><button class="moduleTile" onclick="openApp('operasional');showOps('projects')"><b>🏗 Project Control</b><span>Pipeline dan progres pekerjaan</span></button><button class="moduleTile" onclick="openApp('operasional');showOps('purchasing')"><b>🛒 Purchasing</b><span>Permintaan dan pembelian material</span></button><button class="moduleTile" onclick="openApp('operasional');showOps('inventory')"><b>📦 Inventory</b><span>Stok material dan minimum stok</span></button></div></div><div class="enterpriseCard"><h3>Perhatian Owner</h3><div class="quickList" id="ownerAlerts"></div></div></div><div class="enterpriseCard" style="margin-top:14px"><h3>Pipeline Project</h3><div class="pipeline" id="pipeline"></div></div></section>
-  <section id="pageOperasional" class="commandPage"><div class="hero"><div><h1>Operasional Mulia Group</h1><p>Project, purchasing, inventory, jadwal dan audit aktivitas.</p></div><button class="smallBtn primary" onclick="addRecord()">+ Tambah Data</button></div><div class="opsTabs"><button class="opsTab active" data-ops="projects" onclick="showOps('projects')">Project</button><button class="opsTab" data-ops="purchasing" onclick="showOps('purchasing')">Purchasing</button><button class="opsTab" data-ops="inventory" onclick="showOps('inventory')">Inventory</button><button class="opsTab" data-ops="tasks" onclick="showOps('tasks')">Tugas & Jadwal</button><button class="opsTab" data-ops="audit" onclick="showOps('audit')">Audit Log</button></div><div class="enterpriseCard"><div id="opsContent"></div></div></section>
-  <iframe id="framePenawaran" class="appFrame" title="Penawaran Invoice"></iframe>
+  <iframe id="framePenawaran" class="appFrame active" title="Penawaran Invoice"></iframe>
   <iframe id="frameKas" class="appFrame" title="Kas Besar"></iframe>
   <iframe id="frameAbsensi" class="appFrame" title="Absensi dan Slip Gaji"></iframe>
 </div>
@@ -74,7 +70,7 @@ function decodeHtml(b64){const bin=atob(b64);const bytes=new Uint8Array(bin.leng
 function loadFrame(id,b64){const f=document.getElementById(id);if(f.dataset.loaded==='1')return;f.srcdoc=decodeHtml(b64);f.dataset.loaded='1';setTimeout(()=>applyToChild(f),500)}
 function applyToChild(f){try{if(f.contentWindow && typeof f.contentWindow.portalApplySession==='function')f.contentWindow.portalApplySession();}catch(e){}}
 function applyAllChildren(){document.querySelectorAll('iframe').forEach(applyToChild)}
-async function portalLogin(){const v=document.getElementById('portalPass').value;const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));const h=[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');if(h===PORTAL_PASS_HASH){sessionStorage.setItem('PORTAL_OK','1');document.getElementById('portalLogin').style.display='none';openApp('dashboard');}else document.getElementById('portalErr').style.display='block';}
+async function portalLogin(){const v=document.getElementById('portalPass').value;const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));const h=[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');if(h===PORTAL_PASS_HASH){sessionStorage.setItem('PORTAL_OK','1');document.getElementById('portalLogin').style.display='none';openApp('penawaran');}else document.getElementById('portalErr').style.display='block';}
 function portalLogout(){sessionStorage.removeItem('PORTAL_OK');sessionStorage.removeItem('PORTAL_GOOGLE_TOKEN');sessionStorage.removeItem('PORTAL_GOOGLE_EMAIL');sessionStorage.removeItem('ok');location.reload();}
 function updatePortalGoogleUi(){const ok=!!window.PORTAL_ACCESS_TOKEN;document.getElementById('portalDot').classList.toggle('on',ok);document.getElementById('portalGoogleStatus').textContent=ok?'Login: '+(window.PORTAL_GOOGLE_EMAIL||'Google aktif'):'Google belum login';applyAllChildren();}
 function portalClearGoogleToken(){
@@ -135,7 +131,7 @@ async function portalEnsureGoogleToken(){
   }
   return await loginGooglePortal({prompt:'consent'});
 }
-function openApp(app){const apps=['dashboard','operasional','penawaran','kas','absensi'];if(!apps.includes(app))app='dashboard';document.querySelectorAll('.commandPage,.appFrame').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tabBtn').forEach(x=>x.classList.remove('active'));const map={dashboard:'pageDashboard',operasional:'pageOperasional',penawaran:'framePenawaran',kas:'frameKas',absensi:'frameAbsensi'};document.getElementById(map[app]).classList.add('active');const btn=document.getElementById('btn'+app.charAt(0).toUpperCase()+app.slice(1));if(btn)btn.classList.add('active');if(app==='penawaran')loadFrame('framePenawaran',APP_PENAWARAN_B64);if(app==='kas'){portalSyncPayrollFromStorage(true);loadFrame('frameKas',APP_KAS_B64)}if(app==='absensi')loadFrame('frameAbsensi',APP_ABSENSI_B64);if(app==='dashboard')renderEnterprise();if(app==='operasional')renderOps();sessionStorage.setItem('BERKAH_MULIA_PORTAL_LAST_APP',app);applyAllChildren()}
+function openApp(app){const apps=['penawaran','kas','absensi'];if(!apps.includes(app))app='dashboard';document.querySelectorAll('.commandPage,.appFrame').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tabBtn').forEach(x=>x.classList.remove('active'));const map={dashboard:'pageDashboard',operasional:'pageOperasional',penawaran:'framePenawaran',kas:'frameKas',absensi:'frameAbsensi'};document.getElementById(map[app]).classList.add('active');const btn=document.getElementById('btn'+app.charAt(0).toUpperCase()+app.slice(1));if(btn)btn.classList.add('active');if(app==='penawaran')loadFrame('framePenawaran',APP_PENAWARAN_B64);if(app==='kas'){portalSyncPayrollFromStorage(true);loadFrame('frameKas',APP_KAS_B64)}if(app==='absensi')loadFrame('frameAbsensi',APP_ABSENSI_B64);if(app==='dashboard')renderEnterprise();if(app==='operasional')renderOps();sessionStorage.setItem('BERKAH_MULIA_PORTAL_LAST_APP',app);applyAllChildren()}
 /* Session dipulihkan setelah seluruh script selesai diinisialisasi. */
 
 
