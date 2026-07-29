@@ -111,12 +111,13 @@
   </div>
 </div>
 <div class="portalTop">
-  <div class="brand">PT. DWI MULIA ADVERTISING <span class="portalVersion">ADMIN APPLICATION • V2.0.2 STABLE</span><small>Penawaran • Invoice • Kas Besar • Absensi & Payroll</small></div>
+  <div class="brand">PT. DWI MULIA ADVERTISING <span class="portalVersion">ADMIN APPLICATION • V2.0.3 STABLE</span><small>Penawaran • Invoice • Kas Besar • Absensi & Payroll</small></div>
   <button id="btnDashboard" class="tabBtn active" onclick="openApp('dashboard')">📊 Dashboard</button>
 <button id="btnPenawaran" class="tabBtn" onclick="openApp('penawaran')">📄 Penawaran & Invoice</button>
   <button id="btnKas" class="tabBtn" onclick="openApp('kas')">💰 Kas Besar</button>
   <button id="btnAbsensi" class="tabBtn" onclick="openApp('absensi')">👷 Absensi & Slip Gaji</button>
   <button id="btnBagiHasil" class="tabBtn" onclick="openApp('bagihasil')">🤝 Bagi Hasil</button>
+  <button id="btnPostPayroll" class="topBtn green" onclick="portalPostPayrollToKas()">💵 Catat Payroll ke Kas</button>
   <button class="topBtn green" onclick="loginGooglePortal()">🔐 Login Google</button>
   <button class="topBtn green" onclick="portalManualSync()">☁ Sinkronkan</button>
   <button class="topBtn" onclick="portalManualRestore()">↩ Restore Drive</button>
@@ -404,6 +405,25 @@ function portalReceivePayroll(state,opt={}){
  }catch(e){console.error(e);if(!silent)alert('Sinkron gaji gagal: '+e.message);return {ok:false,error:e.message}}
 }
 window.portalReceivePayroll=portalReceivePayroll;
+
+function portalPostPayrollToKas(){
+ try{
+   const raw=localStorage.getItem('dma_absensi_gaji_kalender_v4')||localStorage.getItem('dma_absensi_gaji_kalender_v3');
+   if(!raw){alert('Data Absensi & Slip Gaji belum tersedia. Buka tab Absensi, isi data, lalu simpan terlebih dahulu.');return}
+   const state=JSON.parse(raw);
+   if(!state?.period){alert('Periode payroll belum dipilih pada tab Absensi.');return}
+   if(!Array.isArray(state.employees)||!state.employees.length){alert('Data karyawan belum tersedia pada tab Absensi.');return}
+   const label=portalPayrollLabel(state.period);
+   if(!confirm('Catat payroll '+label+' ke Kas Besar?\n\nData payroll periode yang sama akan diperbarui, bukan digandakan.'))return;
+   const result=portalReceivePayroll(state,{silent:false,force:true});
+   if(result?.ok){
+     try{openApp('kas')}catch(e){}
+     setTimeout(()=>{try{portalManualSync()}catch(e){}},300);
+   }
+ }catch(e){alert('Payroll gagal dibaca: '+e.message)}
+}
+window.portalPostPayrollToKas=portalPostPayrollToKas;
+
 function portalSyncPayrollFromStorage(silent=true){
  try{const raw=localStorage.getItem('dma_absensi_gaji_kalender_v4')||localStorage.getItem('dma_absensi_gaji_kalender_v3');if(!raw)return {ok:false};return portalReceivePayroll(JSON.parse(raw),{silent})}
  catch(e){if(!silent)alert('Data absensi gagal dibaca: '+e.message);return {ok:false,error:e.message}}
@@ -1275,7 +1295,7 @@ setTimeout(run,500);
 </script>
 
 
-<!-- === DWI V2.0.2 STABLE SAFETY PATCH === -->
+<!-- === DWI V2.0.3 STABLE SAFETY PATCH === -->
 <style id="dwi-v202-status-patch">
 .dot.syncing{background:#f59e0b!important}.dot.error{background:#ef4444!important}.dot.on{background:#22c55e!important}
 </style>
