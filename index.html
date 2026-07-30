@@ -1192,7 +1192,12 @@ window.addEventListener('storage',e=>{if(['DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas
 'use strict';
 if(window.__MULIA_INTEGRATION_V3__) return;
 window.__MULIA_INTEGRATION_V3__=true;
-const C={"code": "DM", "name": "PT. DWI MULIA ADVERTISING", "sales": "DMA_SALES_DB_V1", "kas": "DMA_KAS_BESAR_ACTIVE_DB", "hr": "DMA_ABSENSI_GAJI_V4", "enterprise": "DMA_ENTERPRISE_V1", "profit": "DMA_PROFIT_SHARING_V1", "borongan": null, "out": "Dwi_Mulia_Advertising_TERINTEGRASI.html"};
+/* SAFE COMPATIBILITY PATCH: preserve old keys, populate active keys only if empty. */
+try{
+ if(!localStorage.getItem('DMA_ENTERPRISE_V2') && localStorage.getItem('DMA_ENTERPRISE_V1')) localStorage.setItem('DMA_ENTERPRISE_V2',localStorage.getItem('DMA_ENTERPRISE_V1'));
+ if(!localStorage.getItem('DMA_BAGI_HASIL_SIMPLE_V1') && localStorage.getItem('DMA_PROFIT_SHARING_V1')) localStorage.setItem('DMA_BAGI_HASIL_SIMPLE_V1',localStorage.getItem('DMA_PROFIT_SHARING_V1'));
+}catch(e){console.warn('Dwi compatibility migration skipped',e)}
+const C={"code": "DM", "name": "PT. DWI MULIA ADVERTISING", "sales": "DMA_SALES_DB_V1", "kas": "DMA_KAS_BESAR_ACTIVE_DB", "hr": "DMA_ABSENSI_GAJI_V4", "enterprise": "DMA_ENTERPRISE_V2", "profit": "DMA_BAGI_HASIL_SIMPLE_V1", "borongan": null, "out": "Dwi_Mulia_Advertising_TERINTEGRASI.html"};
 const MONTHS=['januari','februari','maret','april','mei','juni','juli','agustus','september','oktober','november','desember'];
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 const read=(k,f)=>{try{return JSON.parse(localStorage.getItem(k)||'null')??f}catch(e){return f}};
