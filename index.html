@@ -130,7 +130,7 @@
   </div>
 </div>
 <div class="portalTop">
-  <div class="brand">PT. DWI MULIA ADVERTISING <span class="portalVersion">ADMIN APPLICATION • V2.0.6 STABLE INPUT</span><small>Penawaran • Invoice • Kas Besar • Absensi & Payroll</small></div>
+  <div class="brand">PT. DWI MULIA ADVERTISING <span class="portalVersion">ADMIN APPLICATION • V2.0.7 KAS STABIL</span><small>Penawaran • Invoice • Kas Besar • Absensi & Payroll</small></div>
   <button id="btnDashboard" class="tabBtn active" onclick="openApp('dashboard')">📊 Dashboard</button>
 <button id="btnPenawaran" class="tabBtn" onclick="openApp('penawaran')">📄 Penawaran & Invoice</button>
   <button id="btnKas" class="tabBtn" onclick="openApp('kas')">💰 Kas Besar</button>
@@ -1595,5 +1595,87 @@ document.addEventListener('focusout',()=>{
 })();
 </script>
 
+
+<script id="dwi-kas-no-auto-refresh-v207">
+(function(){
+  'use strict';
+  if(window.__DWI_KAS_NO_AUTO_REFRESH_V207__) return;
+  window.__DWI_KAS_NO_AUTO_REFRESH_V207__=true;
+
+  function kasFrame(){ return document.getElementById('frameKas'); }
+  function kasIsOpen(){ return !!kasFrame()?.classList.contains('active'); }
+  function kasIsEditing(){
+    const f=kasFrame();
+    try{
+      const d=f?.contentDocument, a=d?.activeElement;
+      if(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+      if(d?.querySelector(':focus')) return true;
+    }catch(e){}
+    return false;
+  }
+  function captureKasView(){
+    const f=kasFrame();
+    try{
+      const w=f?.contentWindow, d=f?.contentDocument, a=d?.activeElement;
+      return {w,d,x:w?.scrollX||0,y:w?.scrollY||0,id:a?.id||'',start:typeof a?.selectionStart==='number'?a.selectionStart:null,end:typeof a?.selectionEnd==='number'?a.selectionEnd:null};
+    }catch(e){ return null; }
+  }
+  function restoreKasView(s){
+    if(!s?.w) return;
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      try{
+        s.w.scrollTo(s.x,s.y);
+        const el=s.id?s.d?.getElementById(s.id):null;
+        if(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)){
+          el.focus({preventScroll:true});
+          if(s.start!==null && el.setSelectionRange) el.setSelectionRange(s.start,s.end);
+        }
+        s.w.scrollTo(s.x,s.y);
+      }catch(e){}
+    }));
+  }
+
+  let lastSalesSnapshot=null;
+  let pending=false;
+  function installGuard(){
+    const original=window.dwiSyncInvoicePaymentsToKas;
+    if(typeof original!=='function' || original.__v207Guarded) return false;
+    const guarded=function(force){
+      const sales=(localStorage.getItem('DMA_SALES_DB_V1')||localStorage.getItem('dwiMuliaAdmin_V1')||'');
+      if(force!==true && lastSalesSnapshot===sales) return false;
+      if(kasIsOpen() && kasIsEditing()){
+        pending=true;
+        return false;
+      }
+      const view=captureKasView();
+      lastSalesSnapshot=sales;
+      const result=original.apply(this,arguments);
+      restoreKasView(view);
+      pending=false;
+      return result;
+    };
+    guarded.__v207Guarded=true;
+    guarded.__original=original;
+    window.dwiSyncInvoicePaymentsToKas=guarded;
+    lastSalesSnapshot=(localStorage.getItem('DMA_SALES_DB_V1')||localStorage.getItem('dwiMuliaAdmin_V1')||'');
+    return true;
+  }
+
+  const installer=setInterval(()=>{ if(installGuard()) clearInterval(installer); },100);
+  setTimeout(()=>clearInterval(installer),10000);
+
+  document.addEventListener('focusout',function(){
+    if(!pending) return;
+    setTimeout(()=>{ if(!kasIsEditing()) window.dwiSyncInvoicePaymentsToKas?.(true); },1200);
+  },true);
+
+  // Pesan refresh umum tidak boleh merender ulang Kas ketika pengguna sedang mengetik.
+  window.addEventListener('message',function(e){
+    if(!kasIsOpen() || !kasIsEditing()) return;
+    const type=String(e.data?.type||'');
+    if(/refresh|sync|updated/i.test(type)) pending=true;
+  },true);
+})();
+</script>
 </body>
 </html>
