@@ -1848,5 +1848,68 @@ document.addEventListener('focusout',()=>{
   else setTimeout(repair,150);
 })();
 </script>
+
+<script id="dwi-final-consistency-v214">
+(function(){
+  'use strict';
+  if(window.__DWI_FINAL_CONSISTENCY_V214__)return;
+  window.__DWI_FINAL_CONSISTENCY_V214__=true;
+
+  function n(v){
+    const x=Number(String(v??0).replace(/[^0-9.-]/g,''));
+    return Number.isFinite(x)?x:0;
+  }
+  function liveKas(){
+    try{
+      const raw=localStorage.getItem('DMA_KAS_BESAR_ACTIVE_DB')||localStorage.getItem('dwiMuliaKas_V8_ENTERPRISE');
+      const db=raw?JSON.parse(raw):{};
+      const tx=db?.transactions||{};
+      let income=0,expense=0;
+      Object.values(tx).forEach(m=>{
+        if(!m||typeof m!=='object')return;
+        const seen=new Set();
+        (Array.isArray(m.pemasukan)?m.pemasukan:[]).forEach(x=>{
+          const amt=n(x?.amount??x?.nominal??x?.total);
+          const inv=String(x?.invoiceNo||x?.invoiceId||'').trim().toUpperCase();
+          const dt=String(x?.paymentDate||x?.date||'').slice(0,10);
+          const source=String(x?.source||'').toUpperCase();
+          const key=source==='INVOICE'&&inv?`INV|${inv}|${amt}|${dt}`:'';
+          if(key&&seen.has(key))return;
+          if(key)seen.add(key);
+          income+=amt;
+        });
+        (Array.isArray(m.operasional)?m.operasional:[]).forEach(x=>expense+=n(x?.amount??x?.nominal??x?.total));
+      });
+      return {income,expense,balance:income-expense};
+    }catch(e){return null}
+  }
+  function sync(){
+    const page=document.getElementById('pageDashboard');
+    if(page&&!page.classList.contains('active'))return;
+    const k=liveKas();
+    if(!k)return;
+    // Expose a single authoritative live balance for dashboard widgets.
+    window.DWI_LIVE_KAS=k;
+    try{window.MuliaUnifiedSync?.refresh?.()}catch(e){}
+    try{window.renderEnterprise?.()}catch(e){}
+  }
+  let timer=0;
+  window.dwiFinalSync=function(){
+    clearTimeout(timer);
+    timer=setTimeout(sync,50);
+  };
+  window.addEventListener('storage',e=>{
+    if(['DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas_V8_ENTERPRISE','DMA_KAS_LAST_SAVED_AT'].includes(e.key))window.dwiFinalSync();
+  });
+  window.addEventListener('message',e=>{
+    const t=String(e.data?.type||e.data?.action||'');
+    if(/save|update|delete|restore|sync|kas|invoice|payment/i.test(t))window.dwiFinalSync();
+  });
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='visible')window.dwiFinalSync();
+  });
+  setTimeout(sync,200);
+})();
+</script>
 </body>
 </html>
