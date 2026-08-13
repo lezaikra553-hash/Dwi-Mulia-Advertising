@@ -740,7 +740,34 @@ updatePortalGoogleUi();setInterval(updatePortalGoogleUi,2500);
  const read=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
  const calcDoc=x=>{const items=Array.isArray(x?.items)?x.items:[];const sub=items.reduce((a,i)=>a+num(i.qty)*num(i.price),0);const pct=num(x?.ppnPct),mode=x?.ppnMode||'none';let ppn=0,grand=sub;if(mode==='exclusive'){ppn=Math.round(sub*pct/100);grand=sub+ppn}else if(mode==='inclusive'){ppn=Math.round(sub-sub/(1+pct/100));grand=sub}return{sub,ppn,grand,dp:num(x?.dp),sisa:Math.max(0,grand-num(x?.dp))}};
  function getSales(){const d=read('DMA_SALES_DB_V1')||{};const quotes=Array.isArray(d.quotes)?d.quotes:[], invoices=Array.isArray(d.invoices)?d.invoices:[];let invoiceValue=0,receivable=0;invoices.forEach(x=>{const c=calcDoc(x);invoiceValue+=c.grand;if(String(x.status||'').toUpperCase()!=='LUNAS')receivable+=c.sisa});const names=new Set([...quotes,...invoices].map(x=>String(x.customer||'').trim()).filter(Boolean));return{quotes:quotes.length,invoices:invoices.length,customers:names.size,invoiceValue,receivable}}
- function getKas(){const d=read('DMA_KAS_BESAR_ACTIVE_DB')||read('dwiMuliaKas_V8_ENTERPRISE')||{};const sc=d.summaryCalc||{},sm=d.summary||{};let income=num(sc.totalIncome),expense=num(sc.totalExpense),balance=num(sc.net),bank=num(sm.kasDiRekening),piutang=num(sc.piutangTotal),stock=num(sc.stockTotal),count=0;const tx=d.transactions||{};Object.values(tx).forEach(m=>{['pemasukan','operasional'].forEach(k=>count+=Array.isArray(m?.[k])?m[k].length:0)});if(!income&&!expense){Object.values(tx).forEach(m=>{income+=(m?.pemasukan||[]).reduce((a,x)=>a+num(x.amount),0);expense+=(m?.operasional||[]).reduce((z,x)=>z+num(x.amount),0)});balance=income-expense}return{income,expense,balance,bank:bank||balance,piutang,stock,count}}
+ function getKas(){
+  const d=read('DMA_KAS_BESAR_ACTIVE_DB')||read('dwiMuliaKas_V8_ENTERPRISE')||{};
+  const sc=d.summaryCalc||{},sm=d.summary||{};
+  const tx=d.transactions||{};
+  let income=0,expense=0,count=0;
+  Object.values(tx).forEach(m=>{
+    if(!m||typeof m!=='object')return;
+    const ins=Array.isArray(m.pemasukan)?m.pemasukan:[];
+    const outs=Array.isArray(m.operasional)?m.operasional:[];
+    const seen=new Set();
+    ins.forEach(x=>{
+      /* Invoice payment yang sama pernah masuk 2x dengan sourceKey berbeda.
+         Kunci ini menganggap transaksi sama bila invoice, nominal dan tanggalnya sama. */
+      const inv=String(x?.invoiceNo||x?.invoiceId||'').trim().toUpperCase();
+      const amt=num(x?.amount??x?.nominal??x?.total);
+      const dt=String(x?.paymentDate||x?.date||'').slice(0,10);
+      const dupKey=inv&&String(x?.source||'').toUpperCase()==='INVOICE'
+        ? 'INV|'+inv+'|'+amt+'|'+dt : '';
+      if(dupKey && seen.has(dupKey))return;
+      if(dupKey)seen.add(dupKey);
+      income+=amt; count++;
+    });
+    outs.forEach(x=>{expense+=num(x?.amount??x?.nominal??x?.total);count++});
+  });
+  const balance=income-expense;
+  const piutang=num(sc.piutangTotal),stock=num(sc.stockTotal);
+  return {income,expense,balance,bank:balance,piutang,stock,count};
+}
  function getHR(){const d=read('dma_absensi_gaji_kalender_v4')||read('dma_absensi_gaji_kalender_v3')||{};const em=Array.isArray(d.employees)?d.employees:[];let payroll=0;try{if(typeof portalPayrollCalc==='function')em.forEach(e=>payroll+=Math.max(0,portalPayrollCalc(d,e).net||0))}catch(e){}return{employees:em.length,payroll,period:d.period||''}}
  function syncInvoiceProjects(){
   const d=read('DMA_SALES_DB_V1')||{};
@@ -1749,6 +1776,76 @@ document.addEventListener('focusout',()=>{
   window.addEventListener('unhandledrejection',function(e){
     console.error('Unhandled portal promise:',e.reason||e);
   });
+})();
+</script>
+
+<script id="dwi-saldo-integrity-repair-v213">
+(function(){
+  'use strict';
+  const KEY='DMA_KAS_BESAR_ACTIVE_DB';
+  const FALLBACK='dwiMuliaKas_V8_ENTERPRISE';
+  const FLAG='DWI_SALDO_REPAIR_V213_DONE';
+
+  function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
+  function repair(){
+    try{
+      const raw=localStorage.getItem(KEY)||localStorage.getItem(FALLBACK);
+      if(!raw)return;
+      const db=JSON.parse(raw);
+      const tx=db&&db.transactions;
+      if(!tx||typeof tx!=='object')return;
+
+      let removed=0, income=0, expense=0;
+      Object.values(tx).forEach(month=>{
+        if(!month||typeof month!=='object')return;
+        const ins=Array.isArray(month.pemasukan)?month.pemasukan:[];
+        const seen=new Set();
+        const clean=[];
+        ins.forEach(x=>{
+          const inv=String(x?.invoiceNo||x?.invoiceId||'').trim().toUpperCase();
+          const amt=n(x?.amount??x?.nominal??x?.total);
+          const dt=String(x?.paymentDate||x?.date||'').slice(0,10);
+          const isInvoice=String(x?.source||'').toUpperCase()==='INVOICE';
+          const k=isInvoice&&inv ? 'INV|'+inv+'|'+amt+'|'+dt : '';
+          if(k && seen.has(k)){removed++;return}
+          if(k)seen.add(k);
+          clean.push(x);
+          income+=amt;
+        });
+        month.pemasukan=clean;
+        (Array.isArray(month.operasional)?month.operasional:[]).forEach(x=>{
+          expense+=n(x?.amount??x?.nominal??x?.total);
+        });
+      });
+
+      if(!removed && localStorage.getItem(FLAG)==='1')return;
+
+      db.summaryCalc=db.summaryCalc||{};
+      db.summaryCalc.totalIncome=income;
+      db.summaryCalc.totalExpense=expense;
+      db.summaryCalc.totalOp=expense;
+      db.summaryCalc.net=income-expense;
+      db.summaryCalc.totalAset=(income-expense)+n(db.summaryCalc.stockTotal);
+      db.summaryCalc.selisiLabaRugi=income-expense;
+
+      const payload=JSON.stringify(db);
+      localStorage.setItem(KEY,payload);
+      /* Kedua key harus menunjuk ledger yang sama agar tidak kembali ke 64 jt. */
+      localStorage.setItem(FALLBACK,payload);
+      localStorage.setItem('DMA_KAS_LAST_SAVED_AT',new Date().toISOString());
+      localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());
+      localStorage.setItem(FLAG,'1');
+
+      try{window.MuliaUnifiedSync?.refresh?.()}catch(e){}
+      try{window.dwiRefreshDashboardFast?.()}catch(e){}
+      console.info('[DWI] Saldo diperbaiki. Duplikat invoice dihapus:',removed,'Saldo:',income-expense);
+    }catch(e){
+      console.warn('[DWI] Saldo integrity repair gagal:',e);
+    }
+  }
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(repair,150));
+  else setTimeout(repair,150);
 })();
 </script>
 </body>
