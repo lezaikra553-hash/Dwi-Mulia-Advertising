@@ -947,23 +947,47 @@ window.addEventListener('error',e=>{console.error('Portal error:',e.error||e.mes
 })();
 </script>
 
-<script id="dwi-dashboard-final-patch">
+<script id="dwi-dashboard-fast-sync-v211">
 (function(){
 'use strict';
-function j(k){try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}}
-function setChip(id,ok){const e=document.getElementById(id);if(!e)return;e.classList.toggle('ok',!!ok);e.classList.toggle('warn',!ok)}
-function refreshDwiDashboard(){
-  try{window.MuliaUnifiedSync?.refresh()}catch(e){}
-  setChip('chipSales',!!localStorage.getItem('DMA_SALES_DB_V1'));
-  setChip('chipKas',!!(localStorage.getItem('DMA_KAS_BESAR_ACTIVE_DB')||localStorage.getItem('dwiMuliaKas_V8_ENTERPRISE')));
-  setChip('chipHr',!!(localStorage.getItem('dma_absensi_gaji_kalender_v4')||localStorage.getItem('dma_absensi_gaji_kalender_v3')));
-  setChip('chipDrive',!!window.PORTAL_ACCESS_TOKEN);
+if(window.__DWI_DASHBOARD_FAST_SYNC_V211__)return;
+window.__DWI_DASHBOARD_FAST_SYNC_V211__=true;
+let raf=0,lastSignature='';
+const KEYS=['DMA_SALES_DB_V1','DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas_V8_ENTERPRISE','dma_absensi_gaji_kalender_v4','dma_absensi_gaji_kalender_v3','PORTAL_SYNC_LOCAL_UPDATED_AT'];
+
+function sig(){
+ try{return KEYS.map(k=>{const v=localStorage.getItem(k);return k+':'+(v?v.length+':'+v.slice(-80):'0')}).join('|')}
+ catch(e){return ''}
 }
-window.portalDataChanged=function(){clearTimeout(window.__dmaDashTimer);window.__dmaDashTimer=setTimeout(refreshDwiDashboard,180)};
-window.addEventListener('storage',refreshDwiDashboard);
-window.addEventListener('message',refreshDwiDashboard);
-setInterval(()=>{if(document.getElementById('pageDashboard')?.classList.contains('active'))refreshDwiDashboard()},5000);
-setTimeout(refreshDwiDashboard,300);
+function chip(id,ok){
+ const e=document.getElementById(id);if(!e)return;
+ e.classList.toggle('ok',!!ok);e.classList.toggle('warn',!ok);
+}
+function refresh(){
+ raf=0;
+ const page=document.getElementById('pageDashboard');
+ if(page&&!page.classList.contains('active'))return;
+ try{window.MuliaUnifiedSync?.refresh?.()}catch(e){}
+ chip('chipSales',!!localStorage.getItem('DMA_SALES_DB_V1'));
+ chip('chipKas',!!(localStorage.getItem('DMA_KAS_BESAR_ACTIVE_DB')||localStorage.getItem('dwiMuliaKas_V8_ENTERPRISE')));
+ chip('chipHr',!!(localStorage.getItem('dma_absensi_gaji_kalender_v4')||localStorage.getItem('dma_absensi_gaji_kalender_v3')));
+ chip('chipDrive',!!window.PORTAL_ACCESS_TOKEN);
+ try{window.renderEnterprise?.();window.bhRenderSimple?.()}catch(e){}
+ lastSignature=sig();
+}
+function schedule(){
+ if(raf)return;
+ raf=requestAnimationFrame(refresh);
+}
+window.dwiRefreshDashboardFast=schedule;
+window.portalDataChanged=schedule;
+window.addEventListener('storage',e=>{if(!e.key||KEYS.includes(e.key))schedule()});
+window.addEventListener('message',e=>{
+ if(e.data&&(e.data.type==='MULIA_DATA_CHANGED'||e.data.type==='PORTAL_DATA_CHANGED'||e.data.action==='dataChanged'))schedule();
+});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')schedule()});
+document.addEventListener('DOMContentLoaded',()=>{lastSignature=sig();schedule()},{once:true});
+setInterval(()=>{const x=sig();if(x!==lastSignature)schedule()},30000);
 })();
 </script>
 
