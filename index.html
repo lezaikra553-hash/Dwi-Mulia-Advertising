@@ -2016,5 +2016,87 @@ if(typeof oldReceive==='function') window.portalReceivePayroll=function(){const 
 setTimeout(refreshAll,50);
 })();
 </script>
+<!-- === DWI INVOICE -> KAS CANONICAL DEDUPE V1 === -->
+<script id="dwi-invoice-kas-canonical-dedupe-v1">
+(function(){
+  'use strict';
+  if(window.__DWI_INVOICE_KAS_CANONICAL_DEDUPE_V1__) return;
+  window.__DWI_INVOICE_KAS_CANONICAL_DEDUPE_V1__=true;
+  const SALES_KEYS=['DMA_SALES_DB_V1','DWI_MULIA_SALES_DB_V1'];
+  const CASH_KEYS=['DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas_V8_ENTERPRISE'];
+  const MONTHS={1:'januari',2:'februari',3:'maret',4:'april',5:'mei',6:'juni',7:'juli',8:'agustus',9:'september',10:'oktober',11:'november',12:'desember'};
+  function read(keys){for(const k of keys){try{const x=JSON.parse(localStorage.getItem(k)||'null');if(x)return x}catch(e){}}return null}
+  function num(v){return Number(String(v??0).replace(/[^0-9.-]/g,''))||0}
+  function invoiceNo(inv){return String(inv?.no||inv?.number||inv?.invoiceNo||inv?.id||'').trim()}
+  function norm(v){return String(v||'').trim().toUpperCase().replace(/\s+/g,' ')}
+  function isoDate(v){
+    const s=String(v||'').trim(); let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if(m)return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+    m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+    if(m)return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+    return '';
+  }
+  function monthOf(v){const d=isoDate(v),m=d?Number(d.slice(5,7)):0;return MONTHS[m]||''}
+  function paymentList(inv){
+    const arr=Array.isArray(inv?.pembayaran)?inv.pembayaran:[];
+    const out=arr.map((p,i)=>({amount:num(p?.amount??p?.nominal??p?.value),date:isoDate(p?.date??p?.tanggal??inv?.paymentDate??inv?.updatedAt??inv?.date),id:String(p?.id||i),type:String(p?.type||p?.jenis||'DP')})).filter(x=>x.amount>0&&x.date);
+    if(out.length)return out;
+    const paid=num(inv?.totalPaid??inv?.dp),date=isoDate(inv?.paymentDate??inv?.updatedAt??inv?.savedAt??inv?.date);
+    return paid>0&&date?[{amount:paid,date,id:'LEGACY',type:'DP'}]:[];
+  }
+  function rowInvoiceNo(x){
+    const embedded=String(x?.description||'').match(/\bINV[-\/_ ]?[A-Z0-9]+\b/i)?.[0]||'';
+    return norm(x?.invoiceNo||x?.invoiceId||embedded);
+  }
+  function rowDate(x){return isoDate(x?.paymentDate||x?.date)}
+  function samePayment(x,no,p){return rowInvoiceNo(x)===norm(no)&&num(x?.amount??x?.nominal??x?.total)===p.amount&&rowDate(x)===p.date}
+  function canonicalSync(){
+    const sales=read(SALES_KEYS)||{invoices:[]};
+    const kas=read(CASH_KEYS)||{transactions:{}};
+    kas.transactions=kas.transactions&&typeof kas.transactions==='object'?kas.transactions:{};
+    const expected=[];
+    (Array.isArray(sales.invoices)?sales.invoices:[]).forEach(inv=>{const no=invoiceNo(inv);paymentList(inv).forEach(pay=>expected.push({inv,pay,no}))});
+    let changed=false;
+    Object.keys(kas.transactions).forEach(m=>{
+      const b=kas.transactions[m]||{},arr=Array.isArray(b.pemasukan)?b.pemasukan:[],kept=[];
+      arr.forEach(x=>{
+        const source=String(x?.source||'').toUpperCase();
+        const generated=source==='INVOICE'||String(x?.sourceKey||'').toUpperCase().startsWith('INVOICE_PAYMENT|');
+        const match=expected.some(e=>samePayment(x,e.no,e.pay));
+        if(match||generated){changed=true;return}
+        kept.push(x);
+      });
+      if(kept.length!==arr.length)b.pemasukan=kept; else b.pemasukan=arr;
+      kas.transactions[m]=b;
+    });
+    const added=new Set();
+    expected.forEach(({inv,pay,no})=>{
+      const m=monthOf(pay.date); if(!m||!no)return;
+      const fingerprint=norm(no)+'|'+pay.amount+'|'+pay.date;
+      if(added.has(fingerprint))return;
+      added.add(fingerprint);
+      const b=kas.transactions[m]||(kas.transactions[m]={pemasukan:[],operasional:[],indra:[],andre:[]});
+      b.pemasukan=Array.isArray(b.pemasukan)?b.pemasukan:[];
+      if(b.pemasukan.some(x=>samePayment(x,no,pay)))return;
+      b.pemasukan.push({date:pay.date.split('-').reverse().join('/'),paymentDate:pay.date,description:(pay.type||'Pembayaran')+' Invoice '+no+(inv?.customer?' - '+inv.customer:''),amount:pay.amount,source:'INVOICE',sourceKey:'INVOICE_PAYMENT|'+norm(no)+'|'+pay.id+'|'+pay.amount+'|'+pay.date,invoiceId:inv?.id||'',invoiceNo:no,customer:inv?.customer||'',paymentType:pay.type||'',syncedAt:new Date().toISOString()});
+      changed=true;
+    });
+    if(changed){
+      const payload=JSON.stringify(kas); CASH_KEYS.forEach(k=>localStorage.setItem(k,payload));
+      localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());
+      try{window.MuliaRealtime?.emit('invoice-to-kas-canonical')}catch(e){}
+      try{const w=document.getElementById('frameKas')?.contentWindow;w?.loadBrowser?.();w?.renderAll?.()}catch(e){}
+      try{window.renderEnterprise?.();window.bhRenderSimple?.()}catch(e){}
+    }
+    return changed;
+  }
+  window.dwiSyncInvoicePaymentsToKas=function(force){if(window.__MULIA_USER_EDITING__&&force!==true)return false;return canonicalSync()};
+  window.dwiCanonicalInvoiceKasSync=canonicalSync;
+  if(window.MuliaIntegrationV3)window.MuliaIntegrationV3.syncInvoicePaymentsToCash=canonicalSync;
+  const run=()=>{try{canonicalSync()}catch(e){console.error('Canonical Invoice/Kas sync',e)}};
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(run,500));
+  window.addEventListener('storage',e=>{if(SALES_KEYS.includes(e.key))setTimeout(run,80)});
+})();
+</script>
 </body>
 </html>
