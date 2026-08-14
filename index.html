@@ -1266,16 +1266,15 @@ const BH_MONTH_LABEL=['Januari','Februari','Maret','April','Mei','Juni','Juli','
 function bhNum(v){return Number(String(v??0).replace(/[^0-9.-]/g,''))||0}
 function bhMoney(v){return new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(bhNum(v))}
 function bhSimpleLoad(){try{return JSON.parse(localStorage.getItem(BH_SIMPLE_KEY)||'null')||{shares:[{name:'Investor / Partner',pct:0},{name:'Owner',pct:100},{name:'Tabungan Bersama',pct:0}]}}catch(e){return {shares:[{name:'Investor / Partner',pct:0},{name:'Owner',pct:100},{name:'Tabungan Bersama',pct:0}]}}}
-function bhSimpleSave(d){localStorage.setItem(BH_SIMPLE_KEY,JSON.stringify(d));localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString())}
+function bhSimpleSave(d){localStorage.setItem(BH_SIMPLE_KEY,JSON.stringify(d));localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());try{window.MuliaRealtime?.emit('bagi-hasil-updated')}catch(e){}}
 function bhKasData(){for(const k of ['DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas_V8_ENTERPRISE']){try{const d=JSON.parse(localStorage.getItem(k)||'null');if(d&&typeof d==='object')return d}catch(e){}}return {}}
-function bhMonthProfit(data,m){
+function bhMonthProfit(data,m,year){
+ const y=Number(year||new Date().getFullYear());
+ if(window.muliaGetMonthProfit)return window.muliaGetMonthProfit(data,m,y);
  const tx=data?.transactions?.[m]||{};
  const sum=a=>(Array.isArray(a)?a:[]).reduce((z,x)=>z+bhNum(x?.amount ?? x?.total ?? x?.nominal),0);
- const income=sum(tx.pemasukan), expense=sum(tx.operasional);
- if(income||expense)return {income,expense,profit:income-expense};
- const r=data?.rekap?.[m]||{};
- const ri=bhNum(r.pemasukanReal ?? r.pemasukan), re=bhNum(r.pengeluaranReal ?? r.pengeluaran);
- return {income:ri,expense:re,profit:bhNum(r.labaRugiReal ?? (ri-re))};
+ const income=sum(tx.pemasukan), expense=sum(tx.operasional)+sum(tx.pengeluaran);
+ return {income,expense,profit:income-expense};
 }
 function bhReadRows(){return [...document.querySelectorAll('#bhShareRows tr')].map(tr=>({name:(tr.querySelector('.bhName')?.value||'').trim(),pct:bhNum(tr.querySelector('.bhPct')?.value)})).filter(x=>x.name||x.pct)}
 function bhDrawShareRows(shares){const body=document.getElementById('bhShareRows');if(!body)return;body.innerHTML=(shares||[]).map((x,i)=>`<tr><td>${i+1}</td><td><input class="bhName" value="${String(x.name||'').replace(/"/g,'&quot;')}" placeholder="Nama penerima / pos" oninput="bhCheckSimplePct()"></td><td><div style="display:flex;gap:8px"><input class="bhPct" type="number" min="0" max="100" step="0.01" value="${bhNum(x.pct)}" oninput="bhCheckSimplePct()"><button class="bhRemove" onclick="bhRemoveShareRow(${i})">Hapus</button></div></td></tr>`).join('')}
@@ -1283,7 +1282,7 @@ function bhAddShareRow(){const s=bhReadRows();s.push({name:'',pct:0});bhDrawShar
 function bhRemoveShareRow(i){const s=bhReadRows();s.splice(i,1);bhDrawShareRows(s);bhCheckSimplePct()}
 function bhCheckSimplePct(){const total=bhReadRows().reduce((a,x)=>a+bhNum(x.pct),0),ok=Math.abs(total-100)<0.001,el=document.getElementById('bhPctStatus');if(el){el.textContent=`Total persentase: ${total.toLocaleString('id-ID')}%. ${ok?'Siap disimpan.':'Harus tepat 100%.'}`;el.className='bhWarn '+(ok?'bhOk':'')}return ok}
 function bhSaveSimpleSettings(){const shares=bhReadRows();if(!shares.length)return alert('Isi minimal satu nama penerima.');if(!bhCheckSimplePct())return alert('Total persentase harus tepat 100%.');bhSimpleSave({shares,updatedAt:new Date().toISOString()});bhRenderSimple();try{const f=document.getElementById('frameKas');if(f&&f.contentWindow){f.contentWindow.postMessage({type:'BH_SETTINGS_UPDATED'},'*');}}catch(e){}alert('Nama dan persentase bagi hasil tersimpan dan Rekap Bulanan diperbarui.')}
-function bhYearsFromKas(d){const ys=new Set([new Date().getFullYear()]);Object.keys(d?.transactions||{}).forEach(k=>{const y=String(k).match(/(20\d{2})/);if(y)ys.add(+y[1])});return [...ys].sort((a,b)=>b-a)}
+function bhYearsFromKas(d){const ys=new Set([new Date().getFullYear()]);Object.keys(d?.transactions||{}).forEach(k=>{const y=String(k).match(/(20\d{2})/);if(y)ys.add(+y[1]);const t=d.transactions[k]||{};['pemasukan','operasional','pengeluaran','indra','andre','borongan'].forEach(a=>(Array.isArray(t[a])?t[a]:[]).forEach(x=>{const raw=String(x?.paymentDate??x?.date??x?.tanggal??x?.createdAt??'');const m=raw.match(/(20\d{2})/);if(m)ys.add(+m[1])}))});Object.keys(d?.rekap||{}).forEach(k=>{const y=String(k).match(/(20\d{2})/);if(y)ys.add(+y[1])});return [...ys].sort((a,b)=>b-a)}
 function bhRenderSimple(){
  const cfg=bhSimpleLoad();if(!document.querySelector('#bhShareRows .bhName'))bhDrawShareRows(cfg.shares);
  bhCheckSimplePct();const data=bhKasData(),yearSel=document.getElementById('bhYearFilter');
@@ -1291,7 +1290,7 @@ function bhRenderSimple(){
  const year=+(yearSel?.value||new Date().getFullYear()),shares=cfg.shares||[],head=document.getElementById('bhAutoHead'),body=document.getElementById('bhAutoRows'),foot=document.getElementById('bhAutoFoot');
  if(head)head.innerHTML='<tr><th>Bulan</th><th>Pemasukan</th><th>Pengeluaran</th><th>Laba Bersih</th>'+shares.map(s=>`<th>${s.name}<br><small>${bhNum(s.pct)}%</small></th>`).join('')+'</tr>';
  let totals={income:0,expense:0,profit:0,shares:shares.map(()=>0)},hasData=false;
- const rows=BH_MONTHS.map((m,i)=>{const r=bhMonthProfit(data,m);if(r.income||r.expense)hasData=true;totals.income+=r.income;totals.expense+=r.expense;totals.profit+=r.profit;const vals=shares.map((s,j)=>{const v=Math.max(0,r.profit)*bhNum(s.pct)/100;totals.shares[j]+=v;return `<td>${bhMoney(v)}</td>`}).join('');return `<tr><td><b>${BH_MONTH_LABEL[i]}</b></td><td>${bhMoney(r.income)}</td><td>${bhMoney(r.expense)}</td><td class="${r.profit>=0?'bhProfitPos':'bhProfitNeg'}">${bhMoney(r.profit)}</td>${vals}</tr>`}).join('');
+ const rows=BH_MONTHS.map((m,i)=>{const r=bhMonthProfit(data,m,year);if(r.income||r.expense)hasData=true;totals.income+=r.income;totals.expense+=r.expense;totals.profit+=r.profit;const vals=shares.map((s,j)=>{const v=Math.max(0,r.profit)*bhNum(s.pct)/100;totals.shares[j]+=v;return `<td>${bhMoney(v)}</td>`}).join('');return `<tr><td><b>${BH_MONTH_LABEL[i]}</b></td><td>${bhMoney(r.income)}</td><td>${bhMoney(r.expense)}</td><td class="${r.profit>=0?'bhProfitPos':'bhProfitNeg'}">${bhMoney(r.profit)}</td>${vals}</tr>`}).join('');
  if(body)body.innerHTML=rows;
  if(foot)foot.innerHTML=`<tr class="total"><td>TOTAL ${year}</td><td>${bhMoney(totals.income)}</td><td>${bhMoney(totals.expense)}</td><td>${bhMoney(totals.profit)}</td>${totals.shares.map(v=>`<td>${bhMoney(v)}</td>`).join('')}</tr>`;
  const metrics=document.getElementById('bhMetrics');if(metrics)metrics.innerHTML=[['Laba Bersih Tahun Ini',bhMoney(totals.profit)],['Pemasukan',bhMoney(totals.income)],['Pengeluaran',bhMoney(totals.expense)],['Total Persentase',(shares.reduce((a,x)=>a+bhNum(x.pct),0))+'%']].map(x=>`<div class="bhCard bhMetric"><small>${x[0]}</small><b>${x[1]}</b></div>`).join('');
@@ -1384,12 +1383,12 @@ function buildPipeline(){
  invoices.filter(i=>!used.has(i)).forEach(i=>rows.push({id:'PIPE-I-'+(i.id||docNo(i)||rows.length),name:subject(i)||docNo(i)||'Pekerjaan',customer:customer(i),status:statusStage(null,i),value:total(i),quoteNo:String(i.sourceQuoteNo||''),invoiceNo:docNo(i),paid:paid(i),outstanding:Math.max(0,total(i)-paid(i)),integrationManaged:true,updatedAt:new Date().toISOString()}));
  old.projects=[...manual,...rows];old.updatedAt=new Date().toISOString();write(C.enterprise,old);return old;
 }
-function monthSummary(kas,m){const t=kas?.transactions?.[m]||{};const sum=a=>(Array.isArray(a)?a:[]).reduce((s,x)=>s+num(x.amount??x.nominal??x.total),0);let income=sum(t.pemasukan),expense=sum(t.operasional)+sum(t.pengeluaran);if(C.borongan)expense+=sum(t.indra)+sum(t.andre)+sum(t.borongan);return {income,expense,profit:income-expense}}
+function monthSummary(kas,m,year){return window.muliaGetMonthProfit?window.muliaGetMonthProfit(kas,m,year):{income:0,expense:0,profit:0}}
 function publishSnapshot(){
  const sales=read(C.sales,{quotes:[],invoices:[]}),kas=read(C.kas,{}),hr=read(C.hr,{}),ent=read(C.enterprise,{projects:[]}),profit=read(C.profit,{});
  const invoices=Array.isArray(sales.invoices)?sales.invoices:[], quotes=Array.isArray(sales.quotes)?sales.quotes:[];
- let income=0,expense=0;MONTHS.forEach(m=>{const x=monthSummary(kas,m);income+=x.income;expense+=x.expense});
- const snap={schema:'MULIA_OWNER_SNAPSHOT_V3',companyCode:C.code,companyName:C.name,updatedAt:new Date().toISOString(),sales:{quotations:quotes.length,quoteValue:quotes.reduce((s,x)=>s+total(x),0),invoices:invoices.length,invoiceValue:invoices.reduce((s,x)=>s+total(x),0),paid:invoices.reduce((s,x)=>s+paid(x),0),receivable:invoices.reduce((s,x)=>s+Math.max(0,total(x)-paid(x)),0)},cash:{income,expense,closingBalance:income-expense,monthly:Object.fromEntries(MONTHS.map(m=>[m,monthSummary(kas,m)]))},payroll:{employees:Array.isArray(hr.employees)?hr.employees.length:0,period:hr.period||''},pipeline:{projects:Array.isArray(ent.projects)?ent.projects:[]},profitSharing:profit,features:{borongan:!!C.borongan},sourceKeys:C};
+ const snapshotYear=new Date().getFullYear();let income=0,expense=0;MONTHS.forEach(m=>{const x=monthSummary(kas,m,snapshotYear);income+=x.income;expense+=x.expense});
+ const snap={schema:'MULIA_OWNER_SNAPSHOT_V3',companyCode:C.code,companyName:C.name,updatedAt:new Date().toISOString(),sales:{quotations:quotes.length,quoteValue:quotes.reduce((s,x)=>s+total(x),0),invoices:invoices.length,invoiceValue:invoices.reduce((s,x)=>s+total(x),0),paid:invoices.reduce((s,x)=>s+paid(x),0),receivable:invoices.reduce((s,x)=>s+Math.max(0,total(x)-paid(x)),0)},cash:{income,expense,closingBalance:income-expense,monthly:Object.fromEntries(MONTHS.map(m=>[m,monthSummary(kas,m,snapshotYear)])),year:snapshotYear},payroll:{employees:Array.isArray(hr.employees)?hr.employees.length:0,period:hr.period||''},pipeline:{projects:Array.isArray(ent.projects)?ent.projects:[]},profitSharing:profit,features:{borongan:!!C.borongan},sourceKeys:C};
  localStorage.setItem(C.code+'_OWNER_SNAPSHOT_V3',JSON.stringify(snap));window.MULIA_OWNER_SNAPSHOT=snap;window.dispatchEvent(new CustomEvent('muliaOwnerSnapshotUpdated',{detail:snap}));
  return snap;
 }
@@ -1656,10 +1655,10 @@ const write=(keys,v)=>keys.forEach(k=>localStorage.setItem(k,JSON.stringify(v)))
 const n=v=>Number(String(v??0).replace(/[^0-9.-]/g,''))||0;
 function monthOf(v){const s=String(v||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return MONTH_MAP[Number(m[2])]||'';m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);if(m)return MONTH_MAP[Number(m[2])]||'';return''}
 window.dwiSyncInvoicePaymentsToKas=function(){
- const sales=read(SALES_KEYS)||{invoices:[]},kas=read(CASH_KEYS)||{transactions:{}};kas.transactions=kas.transactions||{};
+ const sales=read(SALES_KEYS)||{invoices:[]},kas=read(CASH_KEYS)||{transactions:{}};kas.transactions=kas.transactions||{};let changed=false;const beforeInvoiceState=JSON.stringify(kas.transactions);
  Object.keys(kas.transactions).forEach(m=>{const b=kas.transactions[m]||{};b.pemasukan=(Array.isArray(b.pemasukan)?b.pemasukan:[]).filter(x=>String(x?.source||'').toUpperCase()!=='INVOICE'&&!String(x?.sourceKey||'').startsWith('INVOICE_PAYMENT|'));kas.transactions[m]=b});
- (sales.invoices||[]).forEach(inv=>{let pays=Array.isArray(inv.pembayaran)?inv.pembayaran.filter(p=>n(p.amount??p.nominal)>0):[];if(!pays.length&&n(inv.totalPaid??inv.dp)>0)pays=[{id:'LEGACY',date:String(inv.paymentDate||inv.updatedAt||inv.savedAt||inv.date||''),type:'DP',amount:n(inv.totalPaid??inv.dp),note:'Migrasi pembayaran lama'}];pays.forEach((p,i)=>{const date=String(p.date||p.tanggal||inv.paymentDate||inv.date||''),m=monthOf(date);if(!m)return;kas.transactions[m]=kas.transactions[m]||{pemasukan:[],operasional:[],indra:[],andre:[]};kas.transactions[m].pemasukan=Array.isArray(kas.transactions[m].pemasukan)?kas.transactions[m].pemasukan:[];const amount=n(p.amount??p.nominal);kas.transactions[m].pemasukan.push({date:date.replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3/$2/$1'),paymentDate:date,description:(p.type||p.jenis||'Pembayaran')+' Invoice '+(inv.no||'')+' - '+(inv.customer||''),amount,source:'INVOICE',sourceKey:'INVOICE_PAYMENT|'+String(inv.id||inv.no)+'|'+String(p.id||i),invoiceId:inv.id,invoiceNo:inv.no,customer:inv.customer,paymentType:p.type||p.jenis||'',syncedAt:new Date().toISOString()})})});
- write(CASH_KEYS,kas);localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());try{const w=document.getElementById('frameKas')?.contentWindow;w?.loadBrowser?.();w?.renderAll?.()}catch(e){}try{window.renderEnterprise?.();window.bhRenderSimple?.()}catch(e){}return true;
+ (sales.invoices||[]).forEach(inv=>{let pays=Array.isArray(inv.pembayaran)?inv.pembayaran.filter(p=>n(p.amount??p.nominal)>0):[];if(!pays.length&&n(inv.totalPaid??inv.dp)>0)pays=[{id:'LEGACY',date:String(inv.paymentDate||inv.updatedAt||inv.savedAt||inv.date||''),type:'DP',amount:n(inv.totalPaid??inv.dp),note:'Migrasi pembayaran lama'}];pays.forEach((p,i)=>{const date=String(p.date||p.tanggal||inv.paymentDate||inv.date||''),m=monthOf(date);if(!m)return;kas.transactions[m]=kas.transactions[m]||{pemasukan:[],operasional:[],indra:[],andre:[]};kas.transactions[m].pemasukan=Array.isArray(kas.transactions[m].pemasukan)?kas.transactions[m].pemasukan:[];const amount=n(p.amount??p.nominal);kas.transactions[m].pemasukan.push({date:date.replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3/$2/$1'),paymentDate:date,description:(p.type||p.jenis||'Pembayaran')+' Invoice '+(inv.no||'')+' - '+(inv.customer||''),amount,source:'INVOICE',sourceKey:'INVOICE_PAYMENT|'+String(inv.id||inv.no)+'|'+String(p.id||i),invoiceId:inv.id,invoiceNo:inv.no,customer:inv.customer,paymentType:p.type||p.jenis||'',syncedAt:new Date().toISOString()});changed=true})});
+ changed = JSON.stringify(kas.transactions)!==beforeInvoiceState; if(changed){write(CASH_KEYS,kas);localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());try{window.MuliaRealtime?.emit('invoice-to-kas')}catch(e){}}try{const w=document.getElementById('frameKas')?.contentWindow;w?.loadBrowser?.();w?.renderAll?.()}catch(e){}try{window.renderEnterprise?.();window.bhRenderSimple?.()}catch(e){}return true;
 };
 window.addEventListener('storage',e=>{if(SALES_KEYS.includes(e.key))setTimeout(window.dwiSyncInvoicePaymentsToKas,100)});
 document.addEventListener('DOMContentLoaded',()=>setTimeout(window.dwiSyncInvoicePaymentsToKas,1200));
@@ -1909,6 +1908,112 @@ document.addEventListener('focusout',()=>{
     if(document.visibilityState==='visible')window.dwiFinalSync();
   });
   setTimeout(sync,200);
+})();
+</script>
+
+<script id="mulia-final-integrity-sync-v4">
+(function(){
+'use strict';
+/* FINAL INTEGRITY PATCH V4
+   - one canonical profit calculation for Dashboard + Bagi Hasil
+   - year-safe transaction filtering using transaction dates
+   - BroadcastChannel for immediate same-origin multi-tab sync
+   - Drive re-check every 15s when Google is authenticated
+   - restore refreshes all dependent views
+*/
+const RT='MULIA_REALTIME_V4';
+let bc=null;
+try{bc=new BroadcastChannel(RT)}catch(e){bc=null}
+function emit(reason){try{bc?.postMessage({reason,at:new Date().toISOString(),source:location.origin})}catch(e){}window.dispatchEvent(new CustomEvent('muliaRealtime',{detail:{reason}}))}
+window.MuliaRealtime={emit,channel:bc};
+
+const MM=['januari','februari','maret','april','mei','juni','juli','agustus','september','oktober','november','desember'];
+const num=v=>Number(String(v??0).replace(/[^0-9.-]/g,''))||0;
+function txYear(x){
+  const raw=x?.paymentDate??x?.date??x?.tanggal??x?.createdAt??x?.syncedAt??'';
+  const m=String(raw).match(/(?:^|\D)(20\d{2})(?:\D|$)/);
+  return m?Number(m[1]):null;
+}
+function txMonth(x){
+  const raw=String(x?.paymentDate??x?.date??x?.tanggal??x?.createdAt??'');
+  let m=raw.match(/^(20\d{2})[-\/.](\d{1,2})/);
+  if(m)return Number(m[2]);
+  m=raw.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})$/);
+  if(m)return Number(m[2]);
+  return null;
+}
+function sumArr(arr){return (Array.isArray(arr)?arr:[]).reduce((s,x)=>s+num(x?.amount??x?.nominal??x?.total),0)}
+function arrForYear(arr,month,year){
+  const a=Array.isArray(arr)?arr:[];
+  const dated=a.filter(x=>txYear(x)!==null || txMonth(x)!==null);
+  if(!dated.length) return year===new Date().getFullYear()?a:[];
+  return dated.filter(x=>{
+    const y=txYear(x), mo=txMonth(x);
+    return (y===null ? year===new Date().getFullYear() : y===year) && (mo===null ? true : mo===month);
+  }).concat(year===new Date().getFullYear()?a.filter(x=>txYear(x)===null && txMonth(x)===null):[]);
+}
+function getMonthProfit(db,month,year){
+  const y=Number(year||new Date().getFullYear()), m=MM.indexOf(month)+1;
+  const t=db?.transactions?.[month]||db?.transactions?.[`${y}-${month}`]||db?.transactions?.[`${y}_${month}`]||{};
+  const income=sumArr(arrForYear(t.pemasukan,m,y));
+  let expense=sumArr(arrForYear(t.operasional,m,y))+sumArr(arrForYear(t.pengeluaran,m,y));
+  /* These are real cash-out categories in Kas Besar; include them whenever present. */
+  expense+=sumArr(arrForYear(t.indra,m,y))+sumArr(arrForYear(t.andre,m,y))+sumArr(arrForYear(t.borongan,m,y));
+  if(income||expense) return {income,expense,profit:income-expense};
+  /* Legacy rekap is used only when no transaction rows exist for the month. */
+  const r=db?.rekap?.[month]||db?.rekap?.[`${y}-${month}`]||{};
+  const ri=num(r.pemasukanReal??r.pemasukan), re=num(r.pengeluaranReal??r.pengeluaran);
+  return {income:ri,expense:re,profit:num(r.labaRugiReal??(ri-re))};
+}
+window.muliaGetMonthProfit=getMonthProfit;
+window.muliaGetYearProfit=function(db,year){return MM.reduce((a,m)=>{const x=getMonthProfit(db,m,year);a.income+=x.income;a.expense+=x.expense;a.profit+=x.profit;return a},{income:0,expense:0,profit:0})};
+
+/* Immediate refresh across tabs/windows. */
+function refreshAll(){
+  try{window.MuliaIntegrationV3?.run?.()}catch(e){}
+  try{window.dwiSyncInvoicePaymentsToKas?.()}catch(e){}
+  try{window.bhRenderSimple?.()}catch(e){}
+  try{window.renderEnterprise?.()}catch(e){}
+  try{window.renderAll?.()}catch(e){}
+}
+if(bc)bc.onmessage=e=>{if(e?.data?.source!==location.origin)refreshAll();else refreshAll()};
+window.addEventListener('muliaRealtime',refreshAll);
+
+/* Make Bagi Hasil immediately broadcast settings changes. */
+const oldBhSave=window.bhSaveSimpleSettings;
+if(typeof oldBhSave==='function') window.bhSaveSimpleSettings=function(){const r=oldBhSave.apply(this,arguments);emit('bagi-hasil-settings');return r};
+
+/* Improve restore: refresh current app after Drive restore. */
+const oldApply=window.portalApplyStorage;
+if(typeof oldApply==='function'){
+  window.portalApplyStorage=function(data){const r=oldApply.apply(this,arguments);setTimeout(()=>{emit('drive-restore');refreshAll()},30);return r};
+}
+
+/* Cloud sync is near-realtime, while preserving existing timestamp/hash conflict logic. */
+let cloudBusy=false;
+async function cloudTick(){
+  if(cloudBusy||document.hidden||window.__MULIA_USER_EDITING__)return;
+  if(!window.PORTAL_ACCESS_TOKEN||typeof window.portalSmartSyncAfterLogin!=='function')return;
+  cloudBusy=true;
+  try{await window.portalSmartSyncAfterLogin()}catch(e){}finally{cloudBusy=false}
+}
+setInterval(cloudTick,15000);
+window.addEventListener('focus',()=>setTimeout(cloudTick,500));
+window.addEventListener('online',()=>setTimeout(cloudTick,500));
+
+/* Broadcast important local changes immediately. */
+window.addEventListener('storage',e=>{
+  if(!e.key)return;
+  if(/^DMA_|^DM_|^dwi_|^DWI_/.test(e.key) || /OWNER_SNAPSHOT|INTEGRATION_UPDATED|PORTAL_SYNC_LOCAL_UPDATED_AT/.test(e.key)){
+    emit('storage:'+e.key);
+  }
+});
+
+/* Make payroll/integration writes visible immediately to all tabs. */
+const oldReceive=window.portalReceivePayroll;
+if(typeof oldReceive==='function') window.portalReceivePayroll=function(){const r=oldReceive.apply(this,arguments);if(r?.ok)emit('payroll-to-kas');return r};
+
+setTimeout(refreshAll,50);
 })();
 </script>
 </body>
