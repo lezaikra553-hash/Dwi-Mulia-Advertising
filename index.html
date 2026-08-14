@@ -1355,21 +1355,9 @@ function ensureInvoiceFromDeal(){
 }
 function ensureCashShape(db){db=db&&typeof db==='object'?db:{};db.transactions=db.transactions||{};return db}
 function syncInvoicePaymentsToCash(){
- const sales=read(C.sales,{quotes:[],invoices:[]}), invoices=Array.isArray(sales.invoices)?sales.invoices:[];
- let kas=ensureCashShape(read(C.kas,{})), changed=false;
- invoices.forEach(inv=>{
-   const invNo=docNo(inv)||String(inv.id||'INV');
-   const payments=Array.isArray(inv.pembayaran)&&inv.pembayaran.length?inv.pembayaran.map((p,i)=>({amount:num(p.amount??p.nominal??p.value),date:p.date??p.tanggal??inv.updatedAt??inv.date,key:String(p.id||i)})):[{amount:paid(inv),date:inv.paymentDate??inv.updatedAt??inv.date,key:'TOTAL'}];
-   payments.filter(p=>p.amount>0).forEach(p=>{
-     const sourceKey='INVOICE_PAYMENT|'+invNo+'|'+p.key+'|'+p.amount;
-     const mk=monthKey(p.date);kas.transactions[mk]=kas.transactions[mk]||{pemasukan:[],operasional:[]};kas.transactions[mk].pemasukan=Array.isArray(kas.transactions[mk].pemasukan)?kas.transactions[mk].pemasukan:[];
-     const all=Object.values(kas.transactions).flatMap(m=>Array.isArray(m?.pemasukan)?m.pemasukan:[]);
-     if(all.some(x=>x.sourceKey===sourceKey))return;
-     kas.transactions[mk].pemasukan.push({date:isoDate(p.date),description:'Pembayaran Invoice '+invNo+(customer(inv)?' - '+customer(inv):''),amount:p.amount,source:'INVOICE',sourceKey,invoiceNo:invNo,customer:customer(inv),syncedAt:new Date().toISOString()});changed=true;
-   });
- });
- if(changed){write(C.kas,kas);dispatch('invoice-to-cash');}
- return changed;
+  // Single source of truth: canonical Invoice -> Kas sync.
+  try{ if(typeof window.dwiCanonicalInvoiceKasSync==='function') return !!window.dwiCanonicalInvoiceKasSync(); }catch(e){ console.warn('Canonical Invoice/Kas sync unavailable',e); }
+  return false;
 }
 function buildPipeline(){
  const sales=read(C.sales,{quotes:[],invoices:[]}),quotes=Array.isArray(sales.quotes)?sales.quotes:[],invoices=Array.isArray(sales.invoices)?sales.invoices:[];
@@ -1646,23 +1634,8 @@ setTimeout(run,500);
 
 <script id="dwi-invoice-cash-reconcile-v2">
 (function(){
-'use strict';
-const SALES_KEYS=['DMA_SALES_DB_V1','DWI_MULIA_SALES_DB_V1'];
-const CASH_KEYS=['DMA_KAS_BESAR_ACTIVE_DB','dwiMuliaKas_V8_ENTERPRISE'];
-const MONTH_MAP={1:'januari',2:'februari',3:'maret',4:'april',5:'mei',6:'juni',7:'juli',8:'agustus',9:'september',10:'oktober',11:'november',12:'desember'};
-const read=(keys)=>{for(const k of keys){try{const x=JSON.parse(localStorage.getItem(k)||'null');if(x)return x}catch(e){}}return null};
-const write=(keys,v)=>keys.forEach(k=>localStorage.setItem(k,JSON.stringify(v)));
-const n=v=>Number(String(v??0).replace(/[^0-9.-]/g,''))||0;
-function monthOf(v){const s=String(v||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return MONTH_MAP[Number(m[2])]||'';m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);if(m)return MONTH_MAP[Number(m[2])]||'';return''}
-window.dwiSyncInvoicePaymentsToKas=function(){
- const sales=read(SALES_KEYS)||{invoices:[]},kas=read(CASH_KEYS)||{transactions:{}};kas.transactions=kas.transactions||{};let changed=false;const beforeInvoiceState=JSON.stringify(kas.transactions);
- Object.keys(kas.transactions).forEach(m=>{const b=kas.transactions[m]||{};b.pemasukan=(Array.isArray(b.pemasukan)?b.pemasukan:[]).filter(x=>String(x?.source||'').toUpperCase()!=='INVOICE'&&!String(x?.sourceKey||'').startsWith('INVOICE_PAYMENT|'));kas.transactions[m]=b});
- (sales.invoices||[]).forEach(inv=>{let pays=Array.isArray(inv.pembayaran)?inv.pembayaran.filter(p=>n(p.amount??p.nominal)>0):[];if(!pays.length&&n(inv.totalPaid??inv.dp)>0)pays=[{id:'LEGACY',date:String(inv.paymentDate||inv.updatedAt||inv.savedAt||inv.date||''),type:'DP',amount:n(inv.totalPaid??inv.dp),note:'Migrasi pembayaran lama'}];pays.forEach((p,i)=>{const date=String(p.date||p.tanggal||inv.paymentDate||inv.date||''),m=monthOf(date);if(!m)return;kas.transactions[m]=kas.transactions[m]||{pemasukan:[],operasional:[],indra:[],andre:[]};kas.transactions[m].pemasukan=Array.isArray(kas.transactions[m].pemasukan)?kas.transactions[m].pemasukan:[];const amount=n(p.amount??p.nominal);kas.transactions[m].pemasukan.push({date:date.replace(/^(\d{4})-(\d{2})-(\d{2})$/,'$3/$2/$1'),paymentDate:date,description:(p.type||p.jenis||'Pembayaran')+' Invoice '+(inv.no||'')+' - '+(inv.customer||''),amount,source:'INVOICE',sourceKey:'INVOICE_PAYMENT|'+String(inv.id||inv.no)+'|'+String(p.id||i),invoiceId:inv.id,invoiceNo:inv.no,customer:inv.customer,paymentType:p.type||p.jenis||'',syncedAt:new Date().toISOString()});changed=true})});
- changed = JSON.stringify(kas.transactions)!==beforeInvoiceState; if(changed){write(CASH_KEYS,kas);localStorage.setItem('PORTAL_SYNC_LOCAL_UPDATED_AT',new Date().toISOString());try{window.MuliaRealtime?.emit('invoice-to-kas')}catch(e){}}try{const w=document.getElementById('frameKas')?.contentWindow;w?.loadBrowser?.();w?.renderAll?.()}catch(e){}try{window.renderEnterprise?.();window.bhRenderSimple?.()}catch(e){}return true;
-};
-window.addEventListener('storage',e=>{if(SALES_KEYS.includes(e.key))setTimeout(window.dwiSyncInvoicePaymentsToKas,100)});
-document.addEventListener('DOMContentLoaded',()=>setTimeout(window.dwiSyncInvoicePaymentsToKas,1200));
-setInterval(()=>{try{window.dwiSyncInvoicePaymentsToKas()}catch(e){}},10000);
+  // Legacy reconcile disabled. The canonical Invoice -> Kas engine below is the only writer.
+  window.__DWI_LEGACY_INVOICE_RECONCILE_DISABLED__=true;
 })();
 </script>
 
@@ -2050,6 +2023,7 @@ setTimeout(refreshAll,50);
   }
   function rowDate(x){return isoDate(x?.paymentDate||x?.date)}
   function samePayment(x,no,p){return rowInvoiceNo(x)===norm(no)&&num(x?.amount??x?.nominal??x?.total)===p.amount&&rowDate(x)===p.date}
+  function paymentFingerprint(no,p){return norm(no)+'|'+p.amount+'|'+p.date}
   function canonicalSync(){
     const sales=read(SALES_KEYS)||{invoices:[]};
     const kas=read(CASH_KEYS)||{transactions:{}};
@@ -2095,6 +2069,7 @@ setTimeout(refreshAll,50);
   if(window.MuliaIntegrationV3)window.MuliaIntegrationV3.syncInvoicePaymentsToCash=canonicalSync;
   const run=()=>{try{canonicalSync()}catch(e){console.error('Canonical Invoice/Kas sync',e)}};
   document.addEventListener('DOMContentLoaded',()=>setTimeout(run,500));
+   window.addEventListener('load',()=>setTimeout(run,900));
   window.addEventListener('storage',e=>{if(SALES_KEYS.includes(e.key))setTimeout(run,80)});
 })();
 </script>
