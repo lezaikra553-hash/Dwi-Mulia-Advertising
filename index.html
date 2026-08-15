@@ -728,7 +728,7 @@ function renderOps(){if(!document.getElementById('opsContent'))return;const defs
 function addRecord(){if(currentOps==='audit')return;const schemas={projects:[['name','Nama project'],['customer','Customer'],['entity','Badan usaha'],['status','Status: Penawaran/PO-SPK/Produksi/QC/Pengiriman/Pemasangan/Selesai'],['value','Nilai project']],purchasing:[['name','Kebutuhan'],['supplier','Supplier'],['status','Status'],['value','Nilai'],['deadline','Deadline']],inventory:[['name','Material'],['unit','Satuan'],['stock','Stok'],['min','Minimum'],['location','Lokasi']],tasks:[['name','Tugas'],['pic','PIC'],['status','Status'],['deadline','Deadline'],['project','Project']]};let obj={};for(const [k,l] of schemas[currentOps]){let v=prompt(l);if(v===null)return;obj[k]=v}ent[currentOps].push(obj);saveEnt('Tambah '+currentOps)}
 function delRecord(i){if(confirm('Hapus data ini?')){ent[currentOps].splice(i,1);saveEnt('Hapus '+currentOps)}}
 function toast(t){let x=document.getElementById('portalToast');x.textContent=t;x.style.display='block';setTimeout(()=>x.style.display='none',1800)}
-setInterval(()=>{if(document.getElementById('pageDashboard')?.classList.contains('active'))renderEnterprise()},60000);
+/* AUTO REFRESH DASHBOARD DIMATIKAN: refresh hanya lewat aksi/manual. */
 
 updatePortalGoogleUi();setInterval(updatePortalGoogleUi,2500);
 </script>
@@ -794,7 +794,7 @@ function repaint(){syncInvoiceProjects();const e=ent||{projects:[],purchasing:[]
  const al=document.getElementById('ownerAlerts');if(al)al.innerHTML=(sales.receivable?`<div class="quickItem"><span>Invoice belum lunas</span><span class="pill">${money(sales.receivable)}</span></div>`:'')+(kas.piutang?`<div class="quickItem"><span>Piutang Kas Besar</span><span class="pill">${money(kas.piutang)}</span></div>`:'')+(low?`<div class="quickItem"><span>Stok minimum</span><span class="pill">${low} item</span></div>`:'')+(!sales.receivable&&!kas.piutang&&!low?'<div class="quickItem"><span>Tidak ada peringatan kritis</span><span class="pill">AMAN</span></div>':'');
  }
  window.renderEnterprise=repaint;
- window.addEventListener('storage',()=>setTimeout(repaint,50));setInterval(()=>{if(document.getElementById('pageDashboard')?.classList.contains('active'))repaint()},15000);setTimeout(repaint,300);
+ window.addEventListener('storage',()=>setTimeout(repaint,50));/* AUTO REFRESH DASHBOARD DIMATIKAN: repaint hanya dipanggil saat ada perubahan/manual. */setTimeout(repaint,300);
  const oldRenderOps=window.renderOps;window.renderOps=function(){try{return oldRenderOps()}catch(err){const el=document.getElementById('opsContent');if(el)el.innerHTML='<div class="emptyState">Belum ada data operasional. Klik <b>+ Tambah Data</b> untuk mulai.</div>';console.error(err)}};
 })();
 </script>
@@ -890,7 +890,7 @@ function refresh(){build(); try{repaint()}catch(e){try{renderEnterprise()}catch(
 window.MuliaUnifiedSync={refresh,masterKey:MASTER,setProjectStatus:function(invoiceNo,status){const k=String(invoiceNo||'').toLowerCase();const p=(ent.projects||[]).find(x=>String(x.autoInvoiceKey||x.invoiceNo||x.autoKey||'').toLowerCase()===k);if(p){p.status=normalizeStatus(status,p.status);saveEnt('Status project '+invoiceNo+' → '+p.status);refresh();return true}return false}};
 ['framePenawaran','frameKas','frameAbsensi'].forEach(id=>document.getElementById(id)?.addEventListener('load',()=>setTimeout(refresh,500)));
 window.addEventListener('storage',refresh);
-setInterval(refresh,15000);
+/* AUTO REFRESH MODULE DIMATIKAN: mencegah Kas Besar melompat ke atas saat mengetik. */
 setTimeout(refresh,250);
 })();
 </script>
@@ -905,7 +905,7 @@ function loader(on){const el=document.getElementById('portalLoader');if(el)el.cl
 function debouncedRefresh(){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{try{window.MuliaUnifiedSync?.refresh()}catch(e){console.warn(e)}try{window.renderEnterprise?.()}catch(e){}},180)}
 window.addEventListener('message',e=>{const t=e.data?.type||'';if(/save|update|delete|restore|sync|invoice|quote|payroll|kas|absensi/i.test(t))debouncedRefresh()});
 window.addEventListener('storage',debouncedRefresh);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')debouncedRefresh()});
+/* AUTO REFRESH SAAT KEMBALI KE TAB DIMATIKAN. */
 const oldOpen=window.openApp;window.openApp=function(app){loader(true);try{return oldOpen(app)}finally{setTimeout(()=>{loader(false);debouncedRefresh()},450)}};
 ['framePenawaran','frameKas','frameAbsensi'].forEach(id=>document.getElementById(id)?.addEventListener('load',()=>{loader(false);debouncedRefresh()}));
 function health(){
@@ -1014,7 +1014,7 @@ window.addEventListener('message',e=>{
 });
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')schedule()});
 document.addEventListener('DOMContentLoaded',()=>{lastSignature=sig();schedule()},{once:true});
-setInterval(()=>{const x=sig();if(x!==lastSignature)schedule()},30000);
+/* AUTO SIGNATURE REFRESH DIMATIKAN. */
 })();
 </script>
 
@@ -1395,7 +1395,7 @@ window.MuliaIntegrationV3={run,ensureInvoiceFromDeal,syncInvoicePaymentsToCash,b
 window.addEventListener('storage',e=>{if([C.sales,C.kas,C.hr,C.borongan].filter(Boolean).includes(e.key))setTimeout(run,20)});
 window.addEventListener('message',()=>setTimeout(run,20));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)run()});
-document.addEventListener('DOMContentLoaded',()=>{run();setInterval(run,5000)});
+document.addEventListener('DOMContentLoaded',()=>{run()});
 setTimeout(run,500);
 })();
 </script>
